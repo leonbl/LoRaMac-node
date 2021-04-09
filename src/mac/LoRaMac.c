@@ -257,6 +257,8 @@ static LoRaMacCtx_t MacCtx;
 
 static LoRaMacNvmData_t Nvm;
 
+static Band_t RegionBands[REGION_NVM_MAX_NB_BANDS];
+
 /*!
  * Defines the LoRaMac radio events status
  */
@@ -840,7 +842,11 @@ static void ProcessRadioRxDone( void )
     MacCtx.McpsIndication.ResponseTimeout = 0;
 
     Radio.Sleep( );
-    TimerStop( &MacCtx.RxWindowTimer2 );
+
+    if( MacCtx.McpsIndication.RxSlot == RX_SLOT_WIN_1 )
+    {
+        TimerStop( &MacCtx.RxWindowTimer2 );
+    }
 
     // This function must be called even if we are not in class b mode yet.
     if( LoRaMacClassBRxBeacon( payload, size ) == true )
@@ -1223,7 +1229,11 @@ static void ProcessRadioRxDone( void )
             OnRetransmitTimeoutTimerEvent( NULL );
         }
     }
-    MacCtx.MacFlags.Bits.MacDone = 1;
+
+    if( MacCtx.McpsIndication.RxSlot != RX_SLOT_WIN_CLASS_C )
+    {
+        MacCtx.MacFlags.Bits.MacDone = 1;
+    }
 
     UpdateRxSlotIdleState( );
 }
@@ -2712,6 +2722,7 @@ static void ResetMacParameters( void )
     params.Type = INIT_TYPE_RESET_TO_DEFAULT_CHANNELS;
     params.NvmGroup1 = &Nvm.RegionGroup1;
     params.NvmGroup2 = &Nvm.RegionGroup2;
+    params.Bands = &RegionBands;
     RegionInitDefaults( Nvm.MacGroup2.Region, &params );
 
     // Initialize channel index.
@@ -3337,6 +3348,7 @@ LoRaMacStatus_t LoRaMacInitialization( LoRaMacPrimitives_t* primitives, LoRaMacC
     params.Type = INIT_TYPE_DEFAULTS;
     params.NvmGroup1 = &Nvm.RegionGroup1;
     params.NvmGroup2 = &Nvm.RegionGroup2;
+    params.Bands = &RegionBands;
     RegionInitDefaults( Nvm.MacGroup2.Region, &params );
 
     ResetMacParameters( );
@@ -3518,7 +3530,7 @@ LoRaMacStatus_t LoRaMacMibGetRequestConfirm( MibRequestConfirm_t* mibGet )
         }
         case MIB_SE_PIN:
         {
-            mibGet->Param.JoinEui = SecureElementGetPin( );
+            mibGet->Param.SePin = SecureElementGetPin( );
             break;
         }
         case MIB_ADR:
@@ -4530,6 +4542,10 @@ LoRaMacStatus_t LoRaMacMlmeRequest( MlmeReq_t* mlmeRequest )
     {
         return LORAMAC_STATUS_PARAMETER_INVALID;
     }
+    // Initialize mlmeRequest->ReqReturn.DutyCycleWaitTime to 0 in order to
+    // return a valid value in case the MAC is busy.
+    mlmeRequest->ReqReturn.DutyCycleWaitTime = 0;
+
     if( LoRaMacIsBusy( ) == true )
     {
         return LORAMAC_STATUS_BUSY;
@@ -4581,7 +4597,7 @@ LoRaMacStatus_t LoRaMacMlmeRequest( MlmeReq_t* mlmeRequest )
                 // Restore default value for ChannelsDatarateChangedLinkAdrReq
                 Nvm.MacGroup2.ChannelsDatarateChangedLinkAdrReq = false;
 
-                //Activate the default channels
+                // Activate the default channels
                 InitDefaultsParams_t params;
                 params.Type = INIT_TYPE_ACTIVATE_DEFAULT_CHANNELS;
                 RegionInitDefaults( Nvm.MacGroup2.Region, &params );
@@ -4705,6 +4721,10 @@ LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest )
     {
         return LORAMAC_STATUS_PARAMETER_INVALID;
     }
+    // Initialize mcpsRequest->ReqReturn.DutyCycleWaitTime to 0 in order to
+    // return a valid value in case the MAC is busy.
+    mcpsRequest->ReqReturn.DutyCycleWaitTime = 0;
+
     if( LoRaMacIsBusy( ) == true )
     {
         return LORAMAC_STATUS_BUSY;
