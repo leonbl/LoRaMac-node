@@ -372,7 +372,9 @@ static void BoardUnusedIoInit( void )
     GpioInit(&ioPin, PB_13, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
     GpioInit(&ioPin, PB_14, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
     GpioInit(&ioPin, PB_15, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
-
+    //PB8 PB9 - i2c
+    GpioInit(&ioPin, PB_8, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_9, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
 #if defined(USE_DEBUGGER)
     HAL_DBGMCU_EnableDBGSleepMode();
     HAL_DBGMCU_EnableDBGStopMode();
