@@ -28,7 +28,6 @@
 #include "board.h"
 #include "gpio.h"
 #include "uart.h"
-#include "RegionCommon.h"
 
 #include "cli.h"
 #include "Commissioning.h"
@@ -36,6 +35,10 @@
 #include "LmhpCompliance.h"
 #include "CayenneLpp.h"
 #include "LmHandlerMsgDisplay.h"
+#include "RegionCommon.h"
+
+//#include "main.h"
+
 
 #ifndef ACTIVE_REGION
 
@@ -51,9 +54,15 @@
 #define LORAWAN_DEFAULT_CLASS                       CLASS_A
 
 /*!
- * Defines the application data transmission duty cycle. 5s, value in [ms].
+ * Defines the application data transmission duty cycle. Value in [ms].
  */
-#define APP_TX_DUTYCYCLE                            5000
+#define APP_TX_DUTYCYCLE 180000 //3m
+
+/*!
+ * Defines the application data transmission duty cycle multiplicator 
+ * in case of no rain
+ */
+static const uint32_t txTimeMultiplicator = 60;
 
 /*!
  * Defines a random delay for application data transmission duty cycle. 1s,
@@ -99,6 +108,21 @@
 #define LORAWAN_APP_PORT                            3
 
 /*!
+ * Indicates rain detection -> shorter duty cycle
+ */
+extern volatile bool rainDetected;
+
+/*!
+ * Counter used for shortening TX duty cycle
+ */
+static uint32_t txCounter = 0;
+
+/*!
+ * Variable holding flip counts in the moment of OnTxTimerEvent
+ */
+static volatile uint32_t rainCount = 0;
+
+/*!
  *
  */
 typedef enum
@@ -123,29 +147,9 @@ static LmHandlerAppData_t AppData =
 };
 
 /*!
- * Specifies the state of the application LED
- */
-static bool AppLedStateOn = false;
-
-/*!
  * Timer to handle the application data transmission duty cycle
  */
 static TimerEvent_t TxTimer;
-
-/*!
- * Timer to handle the state of LED4
- */
-static TimerEvent_t Led4Timer;
-
-/*!
- * Timer to handle the state of LED2
- */
-static TimerEvent_t Led2Timer;
-
-/*!
- * Timer to handle the state of LED beacon indicator
- */
-static TimerEvent_t LedBeaconTimer;
 
 static void OnMacProcessNotify( void );
 static void OnNvmDataChange( LmHandlerNvmContextStates_t state, uint16_t size );
@@ -174,21 +178,6 @@ static void OnPingSlotPeriodicityChanged( uint8_t pingSlotPeriodicity );
  * Function executed on TxTimer event
  */
 static void OnTxTimerEvent( void* context );
-
-/*!
- * Function executed on Led 4 Timeout event
- */
-static void OnLed4TimerEvent( void* context );
-
-/*!
- * Function executed on Led 2 Timeout event
- */
-static void OnLed2TimerEvent( void* context );
-
-/*!
- * \brief Function executed on Beacon timer Timeout event
- */
-static void OnLedBeaconTimerEvent( void* context );
 
 static LmHandlerCallbacks_t LmHandlerCallbacks =
 {
@@ -241,13 +230,6 @@ static volatile uint8_t IsTxFramePending = 0;
 static volatile uint32_t TxPeriodicity = 0;
 
 /*!
- * LED GPIO pins objects
- */
-extern Gpio_t Led4; // Tx
-extern Gpio_t Led2; // Rx and blinks every 5 seconds when beacon is acquired
-extern Gpio_t Led3; // App
-
-/*!
  * UART object used for command line interface handling
  */
 extern Uart_t Uart1;
@@ -260,23 +242,12 @@ int main( void )
     BoardInitMcu( );
     BoardInitPeriph( );
 
-    TimerInit( &Led4Timer, OnLed4TimerEvent );
-    TimerSetValue( &Led4Timer, 25 );
-
-    TimerInit( &Led2Timer, OnLed2TimerEvent );
-    TimerSetValue( &Led2Timer, 25 );
-
-    TimerInit( &LedBeaconTimer, OnLedBeaconTimerEvent );
-    TimerSetValue( &LedBeaconTimer, 5000 );
-
     // Initialize transmission periodicity variable
     TxPeriodicity = APP_TX_DUTYCYCLE + randr( -APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND );
 
-    const Version_t appVersion = { .Value = FIRMWARE_VERSION };
-    const Version_t gitHubVersion = { .Value = GITHUB_VERSION };
-    DisplayAppInfo( "periodic-uplink-lpp", 
-                    &appVersion,
-                    &gitHubVersion );
+    // const Version_t appVersion = { .Value = FIRMWARE_VERSION };
+    // const Version_t gitHubVersion = { .Value = GITHUB_VERSION };
+    // DisplayAppInfo( "periodic-uplink-lpp", &appVersion,&gitHubVersion );
 
     if ( LmHandlerInit( &LmHandlerCallbacks, &LmHandlerParams ) != LORAMAC_HANDLER_SUCCESS )
     {
@@ -331,27 +302,27 @@ static void OnMacProcessNotify( void )
 
 static void OnNvmDataChange( LmHandlerNvmContextStates_t state, uint16_t size )
 {
-    DisplayNvmDataChange( state, size );
+    //DisplayNvmDataChange( state, size );
 }
 
 static void OnNetworkParametersChange( CommissioningParams_t* params )
 {
-    DisplayNetworkParametersUpdate( params );
+    //DisplayNetworkParametersUpdate( params );
 }
 
 static void OnMacMcpsRequest( LoRaMacStatus_t status, McpsReq_t *mcpsReq, TimerTime_t nextTxIn )
 {
-    DisplayMacMcpsRequestUpdate( status, mcpsReq, nextTxIn );
+    //DisplayMacMcpsRequestUpdate( status, mcpsReq, nextTxIn );
 }
 
 static void OnMacMlmeRequest( LoRaMacStatus_t status, MlmeReq_t *mlmeReq, TimerTime_t nextTxIn )
 {
-    DisplayMacMlmeRequestUpdate( status, mlmeReq, nextTxIn );
+    //DisplayMacMlmeRequestUpdate( status, mlmeReq, nextTxIn );
 }
 
 static void OnJoinRequest( LmHandlerJoinParams_t* params )
 {
-    DisplayJoinRequestUpdate( params );
+    //DisplayJoinRequestUpdate( params );
     if( params->Status == LORAMAC_HANDLER_ERROR )
     {
         LmHandlerJoin( );
@@ -364,29 +335,25 @@ static void OnJoinRequest( LmHandlerJoinParams_t* params )
 
 static void OnTxData( LmHandlerTxParams_t* params )
 {
-    DisplayTxUpdate( params );
+    //DisplayTxUpdate( params );
 }
 
 static void OnRxData( LmHandlerAppData_t* appData, LmHandlerRxParams_t* params )
 {
-    DisplayRxUpdate( appData, params );
+    //DisplayRxUpdate( appData, params );
 
     switch( appData->Port )
     {
     case 1: // The application LED can be controlled on port 1 or 2
     case LORAWAN_APP_PORT:
         {
-            AppLedStateOn = appData->Buffer[0] & 0x01;
-            GpioWrite( &Led3, ( ( AppLedStateOn & 0x01 ) != 0 ) ? 1 : 0 );
+            // AppLedStateOn = appData->Buffer[0] & 0x01;
+            // GpioWrite( &Led3, ( ( AppLedStateOn & 0x01 ) != 0 ) ? 1 : 0 );
         }
         break;
     default:
         break;
     }
-
-    // Switch LED 2 ON for each received downlink
-    GpioWrite( &Led2, 1 );
-    TimerStart( &Led2Timer );
 }
 
 static void OnClassChange( DeviceClass_t deviceClass )
@@ -409,13 +376,13 @@ static void OnBeaconStatusChange( LoRaMacHandlerBeaconParams_t* params )
     {
         case LORAMAC_HANDLER_BEACON_RX:
         {
-            TimerStart( &LedBeaconTimer );
+            // TimerStart( &LedBeaconTimer );
             break;
         }
         case LORAMAC_HANDLER_BEACON_LOST:
         case LORAMAC_HANDLER_BEACON_NRX:
         {
-            TimerStop( &LedBeaconTimer );
+            // TimerStop( &LedBeaconTimer );
             break;
         }
         default:
@@ -424,7 +391,7 @@ static void OnBeaconStatusChange( LoRaMacHandlerBeaconParams_t* params )
         }
     }
 
-    DisplayBeaconUpdate( params );
+    //DisplayBeaconUpdate( params );
 }
 
 #if( LMH_SYS_TIME_UPDATE_NEW_API == 1 )
@@ -449,35 +416,26 @@ static void PrepareTxFrame( void )
         return;
     }
 
-    uint8_t channel = 0;
-
     AppData.Port = LORAWAN_APP_PORT;
 
-    CayenneLppReset( );
-
-    uint8_t potiPercentage = 0;
     uint16_t vdd = 0;
-
-    // Read the current potentiometer setting in percent
-    potiPercentage = BoardGetPotiLevel( );
+    uint8_t vdd_char = 0;
 
     // Read the current voltage level
-    BoardGetBatteryLevel( ); // Updates the value returned by BoardGetBatteryVoltage( ) function.
-    vdd = BoardGetBatteryVoltage( );
+    //BoardGetBatteryLevel(); // Updates the value returned by BoardGetBatteryVoltage( ) function.
+    vdd = BoardBatteryMeasureVoltage();
+    vdd_char = (uint8_t)((vdd / 10) - 150);
 
-    CayenneLppAddDigitalInput( channel++, AppLedStateOn );
-    CayenneLppAddAnalogInput( channel++, BoardGetBatteryLevel( ) * 100 / 254 );
-    CayenneLppAddAnalogInput( channel++, potiPercentage );
-    CayenneLppAddAnalogInput( channel++, vdd );
-
-    CayenneLppCopy( AppData.Buffer );
-    AppData.BufferSize = CayenneLppGetSize( );
+    //stevilo prelivov
+    AppData.Buffer[0] = rainCount;
+    rainCount = 0;
+    //napetost baterije
+    AppData.Buffer[1] = vdd_char;
+    AppData.BufferSize = 2;
 
     if( LmHandlerSend( &AppData, LmHandlerParams.IsTxConfirmed ) == LORAMAC_HANDLER_SUCCESS )
     {
-        // Switch LED 4 ON
-        GpioWrite( &Led4, 1 );
-        TimerStart( &Led4Timer );
+        // something to do in case of LORAMAC_HANDLER_ERROR
     }
 }
 
@@ -538,44 +496,36 @@ static void OnPingSlotPeriodicityChanged( uint8_t pingSlotPeriodicity )
 /*!
  * Function executed on TxTimer event
  */
-static void OnTxTimerEvent( void* context )
+static void OnTxTimerEvent(void* context)
 {
-    TimerStop( &TxTimer );
+    TimerStop(&TxTimer);
 
-    IsTxFramePending = 1;
+    if (rainDetected == true)
+    {
+        CRITICAL_SECTION_BEGIN();
+        rainDetected = false;
+        rainCount = GetCount();
+        CRITICAL_SECTION_END();
+
+        IsTxFramePending = 1;
+        // reset txCounter, so next TX without rain is full multiplicatin period of APP_TX_DUTYCYCLE
+        // and next TX without rain hapens with shortest period
+        txCounter = 0;
+    }
+    else
+    {
+        if ((txCounter % txTimeMultiplicator) == 0)
+        {
+            IsTxFramePending = 1;
+        }
+        else
+        {
+            IsTxFramePending = 0;
+        }
+        txCounter++;
+    }
 
     // Schedule next transmission
-    TimerSetValue( &TxTimer, TxPeriodicity );
-    TimerStart( &TxTimer );
-}
-
-/*!
- * Function executed on Led 4 Timeout event
- */
-static void OnLed4TimerEvent( void* context )
-{
-    TimerStop( &Led4Timer );
-    // Switch LED 4 OFF
-    GpioWrite( &Led4, 0 );
-}
-
-/*!
- * Function executed on Led 2 Timeout event
- */
-static void OnLed2TimerEvent( void* context )
-{
-    TimerStop( &Led2Timer );
-    // Switch LED 2 OFF
-    GpioWrite( &Led2, 0 );
-}
-
-/*!
- * \brief Function executed on Beacon timer Timeout event
- */
-static void OnLedBeaconTimerEvent( void* context )
-{
-    GpioWrite( &Led2, 1 );
-    TimerStart( &Led2Timer );
-
-    TimerStart( &LedBeaconTimer );
+    TimerSetValue(&TxTimer, TxPeriodicity);
+    TimerStart(&TxTimer);
 }

@@ -27,7 +27,7 @@
 #include "gpio.h"
 #include "adc.h"
 #include "spi.h"
-#include "i2c.h"
+//#include "i2c.h"
 #include "uart.h"
 #include "timer.h"
 #include "sysIrqHandlers.h"
@@ -44,27 +44,39 @@
 #define         ID2                                 ( 0x1FF80054 )
 #define         ID3                                 ( 0x1FF80064 )
 
-/*!
+    /*!
  * LED GPIO pins objects
  */
-#if ( USE_POTENTIOMETER == 0 )
-Gpio_t Led1;
-#endif
-Gpio_t Led2;
-Gpio_t Led3;
-Gpio_t Led4;
+    // if ( USE_POTENTIOMETER == 0 )
+    // Gpio_t Led1;
+    // #endif
+    // Gpio_t Led2;
+    // Gpio_t Led3;
+    // Gpio_t Led4;
 
-/*
+    /*
  * MCU objects
  */
-Adc_t Adc;
-I2c_t I2c;
+    Adc_t Adc;
+//I2c_t I2c;
 Uart_t Uart1;
+
+static Gpio_t RainInt;
+
+/*!
+ * Interrupt on rain detection
+ */
+static void OnRainInt(void *context);
+
+/*!
+ * Interrupt on rain detection
+ */
+void Init_Cona_IntCount(void);
 
 /*!
  * Initializes the unused GPIO to a know status
  */
-static void BoardUnusedIoInit( void );
+static void BoardUnusedIoInit(void);
 
 /*!
  * System Clock Configuration
@@ -127,8 +139,58 @@ void BoardCriticalSectionEnd( uint32_t *mask )
 
 void BoardInitPeriph( void )
 {
-
+    Init_Cona_IntCount();
 }
+
+//********************************************************
+//**************** Precipitation counter *****************
+//********************************************************
+
+volatile uint32_t flipCounter;     // tipping bucket counter
+volatile bool rainDetected = true;         // flag signaling percipitation
+extern volatile bool txPeriodShort; // are we transmitting fast or slow?
+
+/*!
+ * Timer to handle switch debounce
+ */
+static TimerEvent_t DebounceTimer;
+
+/*!
+ * \brief Function executed on Debounce Timeout event
+ */
+static void OnDebounceTimerEvent(void *context)
+{
+    TimerStop(&DebounceTimer);
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0)
+    {
+        flipCounter++;
+        rainDetected = true;
+    }
+}
+
+void Init_Cona_IntCount(void)
+{
+    TimerInit(&DebounceTimer, OnDebounceTimerEvent);
+    TimerSetValue(&DebounceTimer, 5);
+}
+
+void OnRainInt(void *context)
+{
+    TimerStart(&DebounceTimer);
+}
+
+uint32_t GetCount(void)
+{
+    uint32_t temp;
+    //CRITICAL_SECTION_BEGIN();
+    temp = flipCounter;
+    flipCounter = 0;
+    //CRITICAL_SECTION_END();
+    return temp;
+}
+
+//********************************************************
+//********************************************************
 
 void BoardInitMcu( void )
 {
@@ -136,13 +198,16 @@ void BoardInitMcu( void )
     {
         HAL_Init( );
 
+        GpioInit(&RainInt, RAIN_INT, PIN_INPUT, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+        GpioSetInterrupt(&RainInt, IRQ_FALLING_EDGE, IRQ_VERY_HIGH_PRIORITY, &OnRainInt);
+
         // LEDs
-#if ( USE_POTENTIOMETER == 0 )
-        GpioInit( &Led1, LED_1, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
-#endif
-        GpioInit( &Led2, LED_2, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
-        GpioInit( &Led3, LED_3, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
-        GpioInit( &Led4, LED_4, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
+// #if ( USE_POTENTIOMETER == 0 )
+//         GpioInit( &Led1, LED_1, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
+// #endif
+//         GpioInit( &Led2, LED_2, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
+//         GpioInit( &Led3, LED_3, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
+//         GpioInit( &Led4, LED_4, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
 
         SystemClockConfig( );
 
@@ -150,17 +215,17 @@ void BoardInitMcu( void )
         FifoInit( &Uart1.FifoRx, Uart1RxBuffer, UART1_FIFO_RX_SIZE );
         // Configure your terminal for 8 Bits data (7 data bit + 1 parity bit), no parity and no flow ctrl
         UartInit( &Uart1, UART_1, UART_TX, UART_RX );
-        UartConfig( &Uart1, RX_TX, 921600, UART_8_BIT, UART_1_STOP_BIT, NO_PARITY, NO_FLOW_CTRL );
+        UartConfig(&Uart1, RX_TX, 230400, UART_8_BIT, UART_1_STOP_BIT, NO_PARITY, NO_FLOW_CTRL);
 
         RtcInit( );
 
         // Switch LED 1, 2, 3, 4 OFF
-#if ( USE_POTENTIOMETER == 0 )
-        GpioWrite( &Led1, 0 );
-#endif
-        GpioWrite( &Led2, 0 );
-        GpioWrite( &Led3, 0 );
-        GpioWrite( &Led4, 0 );
+// #if ( USE_POTENTIOMETER == 0 )
+//         GpioWrite( &Led1, 0 );
+// #endif
+//         GpioWrite( &Led2, 0 );
+//         GpioWrite( &Led3, 0 );
+//         GpioWrite( &Led4, 0 );
 
         BoardUnusedIoInit( );
         if( GetBoardPowerSource( ) == BATTERY_POWER )
@@ -174,7 +239,7 @@ void BoardInitMcu( void )
         SystemClockReConfig( );
     }
 
-    AdcInit( &Adc, POTI );
+    AdcInit(&Adc, PA_3);
 
     SpiInit( &SX1272.Spi, SPI_1, RADIO_MOSI, RADIO_MISO, RADIO_SCLK, NC );
     SX1272IoInit( );
@@ -230,37 +295,6 @@ void BoardGetUniqueId( uint8_t *id )
     id[2] = ( ( *( uint32_t* )ID2 ) ) >> 16;
     id[1] = ( ( *( uint32_t* )ID2 ) ) >> 8;
     id[0] = ( ( *( uint32_t* )ID2 ) );
-}
-
-/*!
- * Potentiometer max and min levels definition
- */
-#define POTI_MAX_LEVEL 900
-#define POTI_MIN_LEVEL 10
-
-uint8_t BoardGetPotiLevel( void )
-{
-    uint8_t potiLevel = 0;
-    uint16_t vpoti = 0;
-
-    // Read the current potentiometer setting
-    vpoti = AdcReadChannel( &Adc , ADC_CHANNEL_3 );
-
-    // check the limits
-    if( vpoti >= POTI_MAX_LEVEL )
-    {
-        potiLevel = 100;
-    }
-    else if( vpoti <= POTI_MIN_LEVEL )
-    {
-        potiLevel = 0;
-    }
-    else
-    {
-        // if the value is in the area, calculate the percentage value
-        potiLevel = ( ( vpoti - POTI_MIN_LEVEL ) * 100 ) / POTI_MAX_LEVEL;
-    }
-    return potiLevel;
 }
 
 /*!
@@ -349,26 +383,40 @@ static void BoardUnusedIoInit( void )
 {
     Gpio_t ioPin;
 
-    if( GetBoardPowerSource( ) == BATTERY_POWER )
-    {
-        GpioInit( &ioPin, USB_DM, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-        GpioInit( &ioPin, USB_DP, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-    }
+    GpioInit(&ioPin, USB_DM, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, USB_DP, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
 
-#if defined( USE_DEBUGGER )
-    HAL_DBGMCU_EnableDBGSleepMode( );
-    HAL_DBGMCU_EnableDBGStopMode( );
-    HAL_DBGMCU_EnableDBGStandbyMode( );
+    //PA1 PA8 PA9 PA10 PA11 PA12 PA15
+    GpioInit(&ioPin, PA_1, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PA_8, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PA_11, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PA_12, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PA_15, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    //PB2 PB12 PB13 PB14 PB15 PB3 PB6
+    GpioInit(&ioPin, PB_2, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_3, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_6, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_12, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_13, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_14, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PB_15, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+
+#if defined(USE_DEBUGGER)
+    HAL_DBGMCU_EnableDBGSleepMode();
+    HAL_DBGMCU_EnableDBGStopMode();
+    HAL_DBGMCU_EnableDBGStandbyMode();
 #else
-    HAL_DBGMCU_DisableDBGSleepMode( );
-    HAL_DBGMCU_DisableDBGStopMode( );
-    HAL_DBGMCU_DisableDBGStandbyMode( );
+    HAL_DBGMCU_DisableDBGSleepMode();
+    HAL_DBGMCU_DisableDBGStopMode();
+    HAL_DBGMCU_DisableDBGStandbyMode();
 
-    GpioInit( &ioPin, JTAG_TMS, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-    GpioInit( &ioPin, JTAG_TCK, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-    GpioInit( &ioPin, JTAG_TDI, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-    GpioInit( &ioPin, JTAG_TDO, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-    GpioInit( &ioPin, JTAG_NRST, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
+    GpioInit(&ioPin, PA_9, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, PA_10, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, JTAG_TMS, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, JTAG_TCK, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, JTAG_TDI, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, JTAG_TDO, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
+    GpioInit(&ioPin, JTAG_NRST, PIN_ANALOGIC, PIN_PUSH_PULL, PIN_NO_PULL, 0);
 #endif
 }
 
@@ -472,7 +520,7 @@ void SysTick_Handler( void )
 
 uint8_t GetBoardPowerSource( void )
 {
-    return USB_POWER;
+    return BATTERY_POWER;
 }
 
 /**

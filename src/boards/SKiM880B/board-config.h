@@ -38,24 +38,18 @@ extern "C"
 {
 #endif
 
+// #define DISABLE_PRINTF 1
+
+// #ifdef DISABLE_PRINTF
+// #define printf(fmt, ...) (0)
+// #endif
+
 /*!
  * Defines the time required for the TCXO to wakeup [ms].
  */
 #define BOARD_TCXO_WAKEUP_TIME                      0
 
-/*!
- * Enables the choice between Led1 and Potentiometer.
- * LED1 and Potentiometer are exclusive.
- * \remark When using Potentiometer don't forget  that the connection between
- *         ADC input pin of iM880A and the Demoboard Poti requires a connection
- *         between X5:11 - X5:18.
- *         Remove the original jumpers for that.
- *         On SKiM880B X5 is the 20 pin header close to the DIP SW and Buttons
- */
-#define USE_POTENTIOMETER                           1
-
-
-/*!
+    /*!
  * Board MCU pins definitions
  */
 
@@ -97,14 +91,16 @@ extern "C"
 #define UART_TX                                     PA_9
 #define UART_RX                                     PA_10
 
-#if ( USE_POTENTIOMETER == 1 )
-#define POTI                                        PA_3
-#else
-#define LED_1                                       PA_3
-#endif
-#define LED_2                                       PA_0
-#define LED_3                                       PA_1
-#define LED_4                                       PA_8
+#define RAIN_INT PA_0
+
+// #if ( USE_POTENTIOMETER == 1 )
+// #define POTI                                        PA_3
+// #else
+// #define LED_1                                       PA_3
+// #endif
+// #define LED_2                                       PA_0
+// #define LED_3                                       PA_1
+// #define LED_4                                       PA_8
 
 // Debug pins definition.
 #define RADIO_DBG_PIN_TX                            NC

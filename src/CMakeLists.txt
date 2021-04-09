@@ -46,7 +46,7 @@ set_property(CACHE APPLICATION PROPERTY STRINGS ${APPLICATION_LIST})
 option(USE_USB_CDC "Use USB-Uart" OFF)
 
 # Switch for debugger support.
-option(USE_DEBUGGER "Use Debugger" ON)
+option(USE_DEBUGGER "Use Debugger" OFF)
 
 # Switch for Class B support of LoRaMac.
 option(CLASSB_ENABLED "Class B support of LoRaMac" OFF)

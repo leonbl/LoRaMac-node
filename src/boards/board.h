@@ -39,6 +39,8 @@ enum BoardPowerSources
     BATTERY_POWER,
 };
 
+uint32_t GetCount(void);
+
 /*!
  * \brief Initializes the mcu.
  */
@@ -84,6 +86,8 @@ uint32_t BoardGetBatteryVoltage( void );
  *                               255: Error]
  */
 uint8_t BoardGetBatteryLevel( void );
+
+uint16_t BoardBatteryMeasureVoltage(void);
 
 /*!
  * Returns a pseudo random seed generated using the MCU Unique ID
