@@ -91,7 +91,7 @@ extern "C"
 #define UART_TX                                     PA_9
 #define UART_RX                                     PA_10
 
-#define RAIN_INT PA_0
+#define RAIN_INT                                    PA_0
 
 // #if ( USE_POTENTIOMETER == 1 )
 // #define POTI                                        PA_3

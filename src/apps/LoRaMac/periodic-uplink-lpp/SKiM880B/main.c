@@ -59,7 +59,7 @@
 #define APP_TX_DUTYCYCLE 180000 //3m
 
 /*!
- * Defines the application data transmission duty cycle multiplicator 
+ * Defines the application data transmission duty cycle multiplicator
  * in case of no rain
  */
 static const uint32_t txTimeMultiplicator = 60;
@@ -80,7 +80,7 @@ static const uint32_t txTimeMultiplicator = 60;
 /*!
  * Default datarate
  *
- * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled 
+ * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled
  */
 #define LORAWAN_DEFAULT_DATARATE                    DR_0
 
@@ -220,7 +220,7 @@ static LmhpComplianceParams_t LmhpComplianceParams =
 
 /*!
  * Indicates if LoRaMacProcess call is pending.
- * 
+ *
  * \warning If variable is equal to 0 then the MCU can be set in low power mode
  */
 static volatile uint8_t IsMacProcessPending = 0;
@@ -247,7 +247,7 @@ int main( void )
 
     // const Version_t appVersion = { .Value = FIRMWARE_VERSION };
     // const Version_t gitHubVersion = { .Value = GITHUB_VERSION };
-    // DisplayAppInfo( "periodic-uplink-lpp", &appVersion,&gitHubVersion );
+    //DisplayAppInfo( "periodic-uplink-lpp", &appVersion,&gitHubVersion );
 
     if ( LmHandlerInit( &LmHandlerCallbacks, &LmHandlerParams ) != LORAMAC_HANDLER_SUCCESS )
     {
@@ -481,6 +481,11 @@ static void OnTxPeriodicityChanged( uint32_t periodicity )
     { // Revert to application default periodicity
         TxPeriodicity = APP_TX_DUTYCYCLE + randr( -APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND );
     }
+
+    // Update timer periodicity
+    TimerStop( &TxTimer );
+    TimerSetValue( &TxTimer, TxPeriodicity );
+    TimerStart( &TxTimer );
 }
 
 static void OnTxFrameCtrlChanged( LmHandlerMsgTypes_t isTxConfirmed )
