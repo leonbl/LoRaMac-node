@@ -80,6 +80,7 @@ static void BoardUnusedIoInit(void);
 
 /*!
  * System Clock Configuration
+ * System Clock Re-Configuration when waking up from STOP mode
  */
 static void SystemClockConfig( void );
 

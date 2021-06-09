@@ -53,7 +53,7 @@ extern "C"
 /*!
  * Indicates if LoRaWAN 1.1.x crypto scheme is enabled
  */
-#define USE_LRWAN_1_1_X_CRYPTO                      0
+#define USE_LRWAN_1_1_X_CRYPTO                      1
 
 /*!
  * Indicates if a random devnonce must be used or not
@@ -63,7 +63,7 @@ extern "C"
 /*!
  * Indicates if JoinNonce is counter based and requires to be checked
  */
-#define USE_JOIN_NONCE_COUNTER_CHECK                0
+#define USE_JOIN_NONCE_COUNTER_CHECK                1
 
 /*!
  * Initial value of the frame counters
@@ -199,6 +199,16 @@ LoRaMacCryptoStatus_t LoRaMacCryptoGetFCntDown( FCntIdentifier_t fCntID, uint32_
  * \retval                       - Status of the operation
  */
 LoRaMacCryptoStatus_t LoRaMacCryptoGetFCntUp( uint32_t* currentUp );
+
+/*!
+ * Computes next RJcount0 or RJcount1 counter value.
+ *
+ * \param[IN]     fCntID          - Frame counter identifier
+ * \param[OUT]    rJcount         - RJcount value
+ *
+ * \retval                        - Status of the operation
+ */
+LoRaMacCryptoStatus_t LoRaMacCryptoGetRJcount( FCntIdentifier_t fCntID, uint16_t* rJcount );
 
 /*!
  * Provides multicast context.
